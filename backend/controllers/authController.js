@@ -2,21 +2,64 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const createToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+      role: user.role
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "1d"
+    }
+  );
+};
+
 // REGISTER
 
 const registerUser = async (req, res) => {
 
   try {
 
-    const { username, password, role } = req.body;
+    const { fullName, email, username, password, role } = req.body;
 
-    const existingUser = await User.findOne({ username });
+    if (!fullName || !email || !username || !password) {
+
+      return res.status(400).json({
+        success: false,
+        message: "Full name, email, username, and password are required"
+      });
+
+    }
+
+    if (!emailPattern.test(email)) {
+
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid email address"
+      });
+
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedUsername = username.trim();
+
+    const existingUser = await User.findOne({
+      $or: [
+        { email: normalizedEmail },
+        { username: normalizedUsername }
+      ]
+    });
 
     if (existingUser) {
 
       return res.status(400).json({
         success: false,
-        message: "User already exists"
+        message:
+          existingUser.email === normalizedEmail
+            ? "Email already exists"
+            : "Username already exists"
       });
 
     }
@@ -25,7 +68,9 @@ const registerUser = async (req, res) => {
 
     const user = await User.create({
 
-      username,
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      username: normalizedUsername,
       password: hashedPassword,
       role
 
@@ -35,7 +80,13 @@ const registerUser = async (req, res) => {
 
       success: true,
       message: "User Registered Successfully",
-      user
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        username: user.username,
+        role: user.role
+      }
 
     });
 
@@ -85,20 +136,7 @@ const loginUser = async (req, res) => {
 
     }
 
-    const token = jwt.sign(
-
-      {
-        id: user._id,
-        role: user.role
-      },
-
-      "secretkey",
-
-      {
-        expiresIn: "1d"
-      }
-
-    );
+    const token = createToken(user);
 
     res.json({
 
